@@ -3,9 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GameSnapshot, Session } from "../src/types";
 
-const { emitAck } = vi.hoisted(() => ({
+const { emitAck, sealResult } = vi.hoisted(() => ({
+  sealResult: { current: { ok: false, error: "orders_distribution" } } as {
+    current: { ok: boolean; error?: string };
+  },
   emitAck: vi.fn(async (event: string, payload: { orders?: unknown[] }) => {
-    if (event === "orders:seal") return { ok: false, error: "orders_distribution" };
+    if (event === "orders:seal") return sealResult.current;
     return {
       ok: true,
       orders: (payload.orders ?? []).map((order, index) => ({
@@ -27,6 +30,7 @@ import { PlanningScreen } from "../src/App";
 afterEach(() => {
   cleanup();
   emitAck.mockClear();
+  sealResult.current = { ok: false, error: "orders_distribution" };
 });
 
 const session: Session = {
@@ -175,7 +179,10 @@ describe("PlanningScreen", () => {
     );
 
     expect(screen.getByText("เรา: กำลังเลือกเป้า")).toBeInTheDocument();
-    expect(screen.getByText("คู่แข่ง: พร้อมโจมตีแล้ว")).toBeInTheDocument();
+    expect(screen.getByText("คู่แข่ง: พร้อมโจมตีแล้ว"))
+      .toHaveClass("status-pill", "status-ready");
+    expect(screen.getByText("เรา: กำลังเลือกเป้า", { selector: ".status-pill" }))
+      .toHaveClass("status-thinking");
     await user.click(screen.getByRole("button", { name: "พร้อมโจมตี" }));
 
     expect(emitAck).toHaveBeenLastCalledWith(
@@ -185,6 +192,35 @@ describe("PlanningScreen", () => {
     expect(setError).toHaveBeenCalledWith(
       "ต้องกระจายกระสุนให้คู่แข่งต่างกันไม่เกินหนึ่งนัด",
     );
+  });
+
+  it("does not overwrite a newer reveal phase with the stale planning snapshot after sealing", async () => {
+    const user = userEvent.setup();
+    const setSnapshot = vi.fn();
+    sealResult.current = { ok: true };
+    const snapshot = makeSnapshot(1, [{
+      id: "p1-1-0",
+      attackerId: "p1",
+      targetId: "p2",
+      coordinate: "A1",
+    }]);
+    render(
+      <PlanningScreen
+        session={session}
+        snapshot={snapshot}
+        setSnapshot={setSnapshot}
+        setError={() => {}}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "พร้อมโจมตี" }));
+
+    const update = setSnapshot.mock.calls.at(-1)?.[0];
+    expect(update).toBeTypeOf("function");
+    expect(update({
+      ...snapshot,
+      public: { ...snapshot.public, phase: "REVEAL" },
+    }).public.phase).toBe("REVEAL");
   });
 
   it("offers the previous round log during planning", () => {

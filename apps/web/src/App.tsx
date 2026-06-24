@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, Dispatch, SetStateAction } from "react";
 import {
   calculateFirepower,
   validateDistribution,
@@ -222,7 +223,7 @@ function Landing({
 function GameApp(props: {
   session: Session;
   snapshot: GameSnapshot;
-  setSnapshot: (snapshot: GameSnapshot) => void;
+  setSnapshot: Dispatch<SetStateAction<GameSnapshot | null>>;
   error: string;
   setError: (error: string) => void;
   messages: Array<{ playerId?: string; text: string }>;
@@ -354,7 +355,7 @@ export function SetupScreen({
 }: {
   session: Session;
   snapshot: GameSnapshot;
-  setSnapshot: (snapshot: GameSnapshot) => void;
+  setSnapshot: Dispatch<SetStateAction<GameSnapshot | null>>;
   setError: (error: string) => void;
 }) {
   const [draft, setDraft] = useState(snapshot.player.secret);
@@ -366,11 +367,12 @@ export function SetupScreen({
       playerId: session.playerId,
     }).then((result) => {
       if (!result.ok || !result.secret) return setError(labelError(result.error));
-      setDraft(result.secret);
-      setSnapshot({
-        ...snapshot,
-        player: { ...snapshot.player, secret: result.secret },
-      });
+      const secret = result.secret;
+      setDraft(secret);
+      setSnapshot((current) => current ? {
+        ...current,
+        player: { ...current.player, secret },
+      } : current);
     });
 
   const ready = async () => {
@@ -409,7 +411,7 @@ export function PlanningScreen({
 }: {
   session: Session;
   snapshot: GameSnapshot;
-  setSnapshot: (snapshot: GameSnapshot) => void;
+  setSnapshot: Dispatch<SetStateAction<GameSnapshot | null>>;
   setError: (error: string) => void;
 }) {
   const opponents = snapshot.public.seats.filter(
@@ -454,11 +456,12 @@ export function PlanningScreen({
       orders: next.map(({ targetId: target, coordinate }) => ({ targetId: target, coordinate })),
     });
     if (!result.ok || !result.orders) return setError(labelError(result.error));
-    setOrders(result.orders);
-    setSnapshot({
-      ...snapshot,
-      player: { ...snapshot.player, orders: result.orders },
-    });
+    const serverOrders = result.orders;
+    setOrders(serverOrders);
+    setSnapshot((current) => current ? {
+      ...current,
+      player: { ...current.player, orders: serverOrders },
+    } : current);
   };
 
   const toggleOrder = (coordinate: Coordinate) => {
@@ -492,15 +495,15 @@ export function PlanningScreen({
     });
     setIsSealing(false);
     if (!result.ok) return setError(labelError(result.error));
-    setSnapshot({
-      ...snapshot,
+    setSnapshot((current) => current ? {
+      ...current,
       public: {
-        ...snapshot.public,
-        seats: snapshot.public.seats.map((seat) =>
+        ...current.public,
+        seats: current.public.seats.map((seat) =>
           seat.id === session.playerId ? { ...seat, sealed: true } : seat,
         ),
       },
-    });
+    } : current);
   };
 
   return (
@@ -516,13 +519,20 @@ export function PlanningScreen({
               onClick={() => setTargetId(seat.id)}
             >
               <span>{seat.name}</span>
-              <b>{count} นัด · {planningStatus(seat)}</b>
+              <b>
+                {count} นัด ·{" "}
+                <span className={`status-pill ${planningStatusClass(seat)}`}>
+                  {planningStatus(seat)}
+                </span>
+              </b>
             </button>
           );
         })}
         <div className="planning-status-list" aria-label="สถานะผู้เล่น">
           {snapshot.public.seats.map((seat) => (
-            <span key={seat.id}>{seat.name}: {planningStatus(seat)}</span>
+            <span key={seat.id} className={`status-pill ${planningStatusClass(seat)}`}>
+              {seat.name}: {planningStatus(seat)}
+            </span>
           ))}
         </div>
       </aside>
@@ -616,6 +626,8 @@ export function RevealScreen({
       ? reveal.slice(0, -1).filter((shot) => shot.attackerId !== activeShot.attackerId)
       : [],
   );
+  const incomingShots = reveal.filter((shot) => shot.targetId === snapshot.player.self.id);
+  const incomingStats = shotStats(incomingShots);
   const activeNumber = activeShot
     ? reveal.filter((shot) => shot.attackerId === activeShot.attackerId).length
     : 0;
@@ -628,11 +640,20 @@ export function RevealScreen({
         <p className="eyebrow">เปิดคำสั่งทีละใบ</p>
         <h1>{snapshot.public.phase === "SALVAGE" ? "สรุปความเสียหาย" : "กระสุนกำลังเดินทาง"}</h1>
         <p>จำรอยพลาดด้วยตัวเอง ระบบจะเก็บถาวรเฉพาะจุดที่คุณยิงโดน</p>
+        {snapshot.public.phase === "SALVAGE" && incomingShots.length > 0 && (
+          <div className="damage-summary">
+            <h2>กระดานของฉันหลังโดนยิง</h2>
+            <p>{incomingStats.hits} โดน · {incomingStats.misses} พลาดเข้าหาคุณ</p>
+            <Board secret={snapshot.player.secret} />
+          </div>
+        )}
       </div>
       <div className="reveal-stage">
         {activeShot ? (
           <>
-            <article className={`active-shot result-${activeShot.result.toLowerCase()}`}>
+            <article
+              className={`active-shot result-${activeShot.result.toLowerCase()} ${playerColorClass(snapshot, activeShot.attackerId)}`}
+            >
               <small>
                 {nameOf(snapshot, activeShot.attackerId)} → {nameOf(snapshot, activeShot.targetId)}
                 {" · "}นัด {activeNumber}
@@ -657,14 +678,22 @@ export function RevealScreen({
         )}
         <div className="completed-orders">
           {completedByAttacker.map(({ attackerId, shots }) => (
-            <details key={attackerId}>
+            <details key={attackerId} className={playerColorClass(snapshot, attackerId)}>
               <summary>
-                <span>คำสั่งของ {nameOf(snapshot, attackerId)}</span>
+                <span>
+                  คำสั่งของ{" "}
+                  <b className={playerColorClass(snapshot, attackerId)}>{nameOf(snapshot, attackerId)}</b>
+                </span>
                 <b>{shots.length} นัด</b>
+                <small>{formatShotStats(shots)}</small>
               </summary>
               <div>
-                {shots.map((shot) => (
-                  <article className={`reveal-card result-${shot.result.toLowerCase()}`} key={shot.orderId}>
+                {shots.map((shot, index) => (
+                  <article
+                    className={`reveal-card result-${shot.result.toLowerCase()} ${playerColorClass(snapshot, shot.attackerId)}`}
+                    key={shot.orderId}
+                    style={{ "--shot-index": index } as CSSProperties}
+                  >
                     <small>{nameOf(snapshot, shot.attackerId)} → {nameOf(snapshot, shot.targetId)}</small>
                     <strong>{shot.coordinate}</strong>
                     <b>{resultLabel(shot.result)}</b>
@@ -677,7 +706,10 @@ export function RevealScreen({
       </div>
       <div className="fleet-status">
         {snapshot.public.seats.map((seat) => (
-          <div key={seat.id} className={seat.eliminated ? "is-eliminated" : ""}>
+          <div
+            key={seat.id}
+            className={`${seat.eliminated ? "is-eliminated" : ""} ${playerColorClass(snapshot, seat.id)}`}
+          >
             <span>{seat.name}</span><b>{seat.eliminated ? "กองเรือจม" : "ยังรบอยู่"}</b>
           </div>
         ))}
@@ -832,11 +864,42 @@ function resultLabel(result: RevealEntry["result"]) {
   }[result];
 }
 
+function shotStats(shots: RevealEntry[]) {
+  return shots.reduce(
+    (stats, shot) => {
+      if (shot.result === "HIT" || shot.result === "SUNK" || shot.result === "WRECK") {
+        stats.hits += 1;
+      } else {
+        stats.misses += 1;
+      }
+      return stats;
+    },
+    { hits: 0, misses: 0 },
+  );
+}
+
+function formatShotStats(shots: RevealEntry[]) {
+  const stats = shotStats(shots);
+  return `${stats.hits} โดน · ${stats.misses} พลาด`;
+}
+
+function playerColorClass(snapshot: GameSnapshot, playerId: string) {
+  const index = snapshot.public.seats.findIndex((seat) => seat.id === playerId);
+  return `player-color-${Math.max(0, index) % 6}`;
+}
+
 function planningStatus(seat: GameSnapshot["public"]["seats"][number]) {
   if (seat.eliminated) return "ตกรอบ";
   if (!seat.connected) return "หลุด";
   if (seat.sealed) return "พร้อมโจมตีแล้ว";
   return "กำลังเลือกเป้า";
+}
+
+function planningStatusClass(seat: GameSnapshot["public"]["seats"][number]) {
+  if (seat.eliminated) return "status-out";
+  if (!seat.connected) return "status-offline";
+  if (seat.sealed) return "status-ready";
+  return "status-thinking";
 }
 
 function groupReveal(reveal: RevealEntry[]) {

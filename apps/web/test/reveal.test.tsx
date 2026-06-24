@@ -37,9 +37,51 @@ describe("RevealScreen", () => {
 
     expect(screen.getByText("B4")).toBeInTheDocument();
     expect(screen.getByText("จม")).toBeInTheDocument();
-    expect(screen.getByText("คำสั่งของ เรา")).toBeInTheDocument();
+    expect(screen.getByText((_text, element) =>
+      element?.tagName.toLowerCase() === "summary" &&
+      (element.textContent?.includes("คำสั่งของ เรา") ?? false),
+    )).toBeInTheDocument();
     expect(screen.getByText("2 นัด")).toBeInTheDocument();
     expect(screen.getByText((text) => text.includes("คู่แข่ง → เรา"))).toBeInTheDocument();
+  });
+
+  it("shows the player's damaged board and per-attacker recap during salvage", () => {
+    const snapshot = makeSnapshot();
+    snapshot.public.phase = "SALVAGE";
+    snapshot.player.secret.ships = [{ id: "ship", coordinates: ["B4", "B5"], hits: ["B4"] }];
+    snapshot.reveal = [
+      {
+        orderId: "one",
+        attackerId: "p2",
+        targetId: "p1",
+        coordinate: "B4",
+        result: "HIT",
+      },
+      {
+        orderId: "two",
+        attackerId: "p2",
+        targetId: "p1",
+        coordinate: "C4",
+        result: "WATER",
+      },
+      {
+        orderId: "three",
+        attackerId: "p1",
+        targetId: "p2",
+        coordinate: "A1",
+        result: "SUNK",
+      },
+    ];
+
+    render(<RevealScreen snapshot={snapshot} liveReveal={[]} />);
+
+    expect(screen.getByRole("heading", { name: "กระดานของฉันหลังโดนยิง" }))
+      .toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ช่อง B4 เรือถูกยิง" }))
+      .toHaveAttribute("data-damage", "hit");
+    expect(screen.getByText("คู่แข่ง", { selector: ".completed-orders summary b" }))
+      .toHaveClass("player-color-1");
+    expect(screen.getByText("1 โดน · 1 พลาด")).toBeInTheDocument();
   });
 });
 

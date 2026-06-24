@@ -30,6 +30,7 @@ describe("typography system", () => {
     const css = readFileSync("src/styles.css", "utf8");
 
     expect(css).toContain("caret-color: var(--color-red)");
+    expect(css).toMatch(/\.eyebrow \{[\s\S]*font-family: var\(--font-body\)/);
     expect(css).toMatch(/\.opponent-tabs b \{[\s\S]*font-family: var\(--font-body\)/);
     expect(css).toMatch(/\.planning-status-list span \{[\s\S]*font-family: var\(--font-body\)/);
   });
