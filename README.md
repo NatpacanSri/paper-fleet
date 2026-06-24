@@ -45,6 +45,25 @@ PORT=3001 pnpm start
 VITE_SERVER_URL=https://your-server.example pnpm --filter @paper-fleet/web build
 ```
 
+## Deploy บน Render
+
+โปรเจกต์นี้มี `render.yaml` สำหรับ Render Blueprint แล้ว:
+
+- Service type: Web Service
+- Runtime: Node
+- Build command: `pnpm install --frozen-lockfile && pnpm build`
+- Start command: `pnpm start`
+- Health check: `/health`
+
+วิธี deploy:
+
+1. เปิด Render Dashboard
+2. เลือก New > Blueprint
+3. เลือก repo `NatpacanSri/paper-fleet`
+4. กด Apply / Deploy
+
+หลัง deploy เสร็จ URL `https://<service>.onrender.com` จะเล่นเกมได้ทั้ง web และ Socket.IO ในที่เดียว
+
 ## โครงสร้าง
 
 - `packages/game-core` — กติกา, validation, round resolution, privacy filter และ Bot
