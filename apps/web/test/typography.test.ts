@@ -25,4 +25,12 @@ describe("typography system", () => {
     expect(css).toContain(".game-header-data");
     expect(css).toContain("font-family: var(--font-data)");
   });
+
+  it("keeps Thai planning status copy readable and gives inputs a visible caret", () => {
+    const css = readFileSync("src/styles.css", "utf8");
+
+    expect(css).toContain("caret-color: var(--color-red)");
+    expect(css).toMatch(/\.opponent-tabs b \{[\s\S]*font-family: var\(--font-body\)/);
+    expect(css).toMatch(/\.planning-status-list span \{[\s\S]*font-family: var\(--font-body\)/);
+  });
 });

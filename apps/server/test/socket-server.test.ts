@@ -62,6 +62,39 @@ describe("Socket.IO API", () => {
     expect(JSON.stringify(created.snapshot)).toContain("กัปตัน");
   });
 
+  it("removes a leaving player from the room for remaining clients", async () => {
+    const server = createSocketServer();
+    servers.push(server);
+    server.httpServer.listen(0);
+    await once(server.httpServer, "listening");
+    const port = (server.httpServer.address() as AddressInfo).port;
+    const hostClient = createClient(`http://127.0.0.1:${port}`);
+    const guestClient = createClient(`http://127.0.0.1:${port}`);
+    clients.push(hostClient, guestClient);
+    await Promise.all([waitForConnect(hostClient), waitForConnect(guestClient)]);
+
+    const host = await emitAck<{
+      ok: true;
+      roomCode: string;
+      playerId: string;
+      token: string;
+    }>(hostClient, "room:create", { name: "กัปตัน" });
+    const guest = await emitAck<{
+      ok: true;
+      roomCode: string;
+      playerId: string;
+      token: string;
+    }>(guestClient, "room:join", { roomCode: host.roomCode, name: "ลูกเรือ" });
+    const left = await emitAck<{ ok: true }>(guestClient, "room:leave", guest);
+
+    expect(left.ok).toBe(true);
+    const state = await waitForState(
+      hostClient,
+      (snapshot) => snapshot.public.seats.length === 1,
+    );
+    expect(state.public.seats).toEqual([expect.objectContaining({ id: host.playerId })]);
+  });
+
   it("returns stable error codes through acknowledgements", async () => {
     const server = createSocketServer();
     servers.push(server);
@@ -158,4 +191,23 @@ function emitAck<T>(socket: Socket, event: string, payload: unknown) {
 
 function waitForConnect(socket: Socket) {
   return new Promise<void>((resolve) => socket.once("connect", () => resolve()));
+}
+
+function waitForState<T extends { public: { seats: unknown[] } }>(
+  socket: Socket,
+  predicate: (snapshot: T) => boolean,
+) {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.off("room:state", onState);
+      reject(new Error("Timed out waiting for room state"));
+    }, 1_000);
+    const onState = (snapshot: T) => {
+      if (!predicate(snapshot)) return;
+      clearTimeout(timer);
+      socket.off("room:state", onState);
+      resolve(snapshot);
+    };
+    socket.on("room:state", onState);
+  });
 }

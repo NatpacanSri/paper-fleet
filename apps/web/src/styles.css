@@ -239,6 +239,7 @@ input {
   border-radius: 0;
   padding: 13px 4px;
   color: var(--color-ink);
+  caret-color: var(--color-red);
   background: transparent;
 }
 
@@ -872,7 +873,8 @@ input {
 
 .planning-layout {
   display: grid;
-  grid-template-columns: 190px minmax(0, 1fr) 280px;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.42fr);
+  grid-template-rows: auto 1fr;
   gap: 14px;
   padding-top: 28px;
 }
@@ -887,6 +889,8 @@ input {
 }
 
 .opponent-tabs {
+  grid-column: 2;
+  grid-row: 1;
   display: grid;
   gap: 8px;
   align-content: start;
@@ -909,9 +913,9 @@ input {
 }
 
 .opponent-tabs b {
-  font-family: var(--font-mono);
-  font-weight: 400;
-  font-size: 0.72rem;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .planning-status-list {
@@ -924,14 +928,21 @@ input {
 
 .planning-status-list span {
   color: var(--color-ink-soft);
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  font-weight: 400;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 700;
   line-height: 1.4;
 }
 
 .planning-board {
+  grid-column: 1;
+  grid-row: 1 / span 2;
   min-width: 0;
+}
+
+.order-stack {
+  grid-column: 2;
+  grid-row: 2;
 }
 
 .board-view-switch {
@@ -1461,12 +1472,7 @@ input {
   }
 
   .planning-layout {
-    grid-template-columns: 150px minmax(0, 1fr);
-  }
-
-  .order-stack {
-    grid-column: 1 / -1;
-    min-height: 220px;
+    grid-template-columns: minmax(0, 1fr) 260px;
   }
 
   .order-cards {

@@ -52,12 +52,25 @@ describe("RoomManager", () => {
       { targetId: guest.playerId, coordinate: "A8" },
     ]);
     now += 91_000;
-    manager.tick();
+    const tick = manager.tick();
 
     const room = manager.getRoom(host.roomCode);
+    expect(tick.resolvedRoomCodes).toEqual([host.roomCode]);
     expect(room.phase).toBe("SALVAGE");
     expect(room.reveal).toHaveLength(1);
     expect(room.players[host.playerId]?.secret.reserveAmmo).toBe(0);
+  });
+
+  it("removes a seat when a player intentionally leaves and promotes the next human host", () => {
+    const manager = new RoomManager({ randomId: sequenceId() });
+    const host = manager.createRoom("กัปตัน");
+    const guest = manager.joinRoom(host.roomCode, "ลูกเรือ");
+
+    manager.leaveRoom(host.roomCode, host.playerId);
+
+    expect(manager.getRoom(host.roomCode).players[host.playerId]).toBeUndefined();
+    expect(Object.keys(manager.getRoom(host.roomCode).players)).toEqual([guest.playerId]);
+    expect(() => manager.addBot(host.roomCode, guest.playerId, "EASY")).not.toThrow();
   });
 
   it("hands a disconnected seat to a fair bot after sixty seconds and restores it on reconnect", () => {

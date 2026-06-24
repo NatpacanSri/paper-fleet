@@ -63,6 +63,20 @@ describe("PlanningScreen", () => {
     );
   });
 
+  it("keeps the attack button disabled until every shot is assigned", () => {
+    render(
+      <PlanningScreen
+        session={session}
+        snapshot={makeSnapshot(1, [])}
+        setSnapshot={() => {}}
+        setError={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "เลือกเป้าให้ครบ 0/1" }))
+      .toBeDisabled();
+  });
+
   it("resets local targeting state when a new round starts", async () => {
     const user = userEvent.setup();
     const { rerender } = render(

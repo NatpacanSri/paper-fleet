@@ -84,7 +84,6 @@ export function createSocketServer(
 
   const announceResolution = async (roomCode: string) => {
     const room = manager.getRoom(roomCode);
-    if (room.reveal.length === 0) return;
     io.to(roomCode).emit("phase:update", { phase: "REVEAL", round: room.round });
     const schedule = buildRevealSchedule(room.reveal, revealStepMs, attackerGapMs);
     schedule.forEach(({ shot, delayMs }) => {
@@ -164,6 +163,21 @@ export function createSocketServer(
         safeAck(ack, () => {
           manager.startRoom(payload.roomCode ?? "", payload.requesterId ?? "");
           void sendSnapshots(payload.roomCode ?? "");
+          return { ok: true };
+        });
+      },
+    );
+
+    socket.on(
+      "room:leave",
+      (payload: { roomCode?: string; playerId?: string }, ack: Ack) => {
+        safeAck(ack, () => {
+          const roomCode = payload.roomCode ?? "";
+          manager.leaveRoom(roomCode, payload.playerId ?? "");
+          socket.leave(roomCode);
+          delete socket.data.roomCode;
+          delete socket.data.playerId;
+          void sendSnapshots(roomCode);
           return { ok: true };
         });
       },
@@ -307,7 +321,15 @@ export function createSocketServer(
     });
   });
 
-  const tickTimer = setInterval(() => manager.tick(), 1_000);
+  const tickTimer = setInterval(() => {
+    const result = manager.tick();
+    for (const roomCode of result.resolvedRoomCodes) {
+      void announceResolution(roomCode);
+    }
+    for (const roomCode of result.updatedRoomCodes) {
+      void sendSnapshots(roomCode);
+    }
+  }, 1_000);
   tickTimer.unref();
   httpServer.on("close", () => clearInterval(tickTimer));
 

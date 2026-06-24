@@ -43,6 +43,11 @@ interface OrderInput {
   coordinate: Coordinate;
 }
 
+interface TickResult {
+  resolvedRoomCodes: string[];
+  updatedRoomCodes: string[];
+}
+
 export class RoomManager {
   private readonly rooms = new Map<string, ManagedRoom>();
   private readonly now: () => number;
@@ -218,6 +223,44 @@ export class RoomManager {
     this.beginPlanning(managed);
   }
 
+  leaveRoom(roomCode: string, playerId: string) {
+    const managed = this.requireManaged(roomCode);
+    if (!managed.game.players[playerId]) throw new Error("player_not_found");
+
+    delete managed.game.players[playerId];
+    managed.tokens.delete(playerId);
+    managed.disconnectedAt.delete(playerId);
+    managed.takenOverHumans.delete(playerId);
+    managed.firepower.delete(playerId);
+
+    const players = Object.values(managed.game.players);
+    if (players.length === 0) {
+      this.rooms.delete(managed.game.code);
+      return { deleted: true };
+    }
+
+    if (managed.hostId === playerId) {
+      managed.hostId = (
+        players.find((player) => player.seat.kind === "HUMAN") ?? players[0]!
+      ).seat.id;
+    }
+
+    const activePlayers = players.filter((player) => !player.seat.eliminated);
+    if (
+      activePlayers.length === 1 &&
+      managed.game.phase !== "LOBBY" &&
+      managed.game.phase !== "SETUP"
+    ) {
+      managed.game.winnerId = activePlayers[0]!.seat.id;
+      managed.game.phase = "FINISHED";
+      managed.game.deadlineAt = null;
+    } else if (managed.game.phase === "PLANNING") {
+      this.resolveIfReady(managed);
+    }
+
+    return { deleted: false };
+  }
+
   disconnect(roomCode: string, playerId: string) {
     const managed = this.requireManaged(roomCode);
     const player = this.requirePlayer(roomCode, playerId);
@@ -239,8 +282,9 @@ export class RoomManager {
     return this.snapshot(roomCode, playerId);
   }
 
-  tick() {
+  tick(): TickResult {
     const now = this.now();
+    const result: TickResult = { resolvedRoomCodes: [], updatedRoomCodes: [] };
 
     for (const [roomCode, managed] of this.rooms) {
       for (const [playerId, disconnectedAt] of managed.disconnectedAt) {
@@ -253,6 +297,7 @@ export class RoomManager {
         if (managed.game.phase === "PLANNING" && !player.sealed) {
           this.prepareBotOrders(managed, playerId);
         }
+        result.updatedRoomCodes.push(roomCode);
       }
 
       if (
@@ -260,12 +305,18 @@ export class RoomManager {
         managed.game.deadlineAt !== null &&
         now >= managed.game.deadlineAt
       ) {
+        const previousPhase = managed.game.phase;
         for (const player of Object.values(managed.game.players)) {
           if (player.seat.eliminated || player.sealed) continue;
           player.sealed = true;
           player.secret.reserveAmmo = 0;
         }
         this.resolveIfReady(managed);
+        if (managed.game.phase !== previousPhase) {
+          result.resolvedRoomCodes.push(roomCode);
+        } else {
+          result.updatedRoomCodes.push(roomCode);
+        }
       }
 
       const connectedHumans = Object.values(managed.game.players).filter(
@@ -278,6 +329,11 @@ export class RoomManager {
         managed.emptySince = null;
       }
     }
+
+    return {
+      resolvedRoomCodes: [...new Set(result.resolvedRoomCodes)],
+      updatedRoomCodes: [...new Set(result.updatedRoomCodes)],
+    };
   }
 
   snapshot(roomCode: string, playerId: string) {

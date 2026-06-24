@@ -18,6 +18,7 @@ import { emitAck, socket } from "./socket";
 import type { AckResult, GameSnapshot, Session } from "./types";
 
 const sessionKey = "paper-fleet-session";
+const playerNameKey = "paper-fleet-player-name";
 const errorLabels: Record<string, string> = {
   room_not_found: "ไม่พบรหัสห้องนี้",
   room_full: "ห้องเต็มแล้ว",
@@ -98,6 +99,9 @@ export function App() {
   };
 
   const leave = () => {
+    if (session) {
+      void emitAck<AckResult>("room:leave", session);
+    }
     clearSession();
     setSession(null);
     setSnapshot(null);
@@ -143,7 +147,7 @@ function Landing({
   onCreated: (result: AckResult) => void;
   onJoined: (result: AckResult) => void;
 }) {
-  const [name, setName] = useState("");
+  const [name, setName] = useState(() => localStorage.getItem(playerNameKey) ?? "");
   const [roomCode, setRoomCode] = useState(
     () => new URLSearchParams(window.location.search).get("room") ?? "",
   );
@@ -171,7 +175,11 @@ function Landing({
               value={name}
               maxLength={24}
               placeholder="กัปตัน..."
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => {
+                const nextName = event.target.value;
+                setName(nextName);
+                localStorage.setItem(playerNameKey, nextName);
+              }}
             />
           </label>
           <button
@@ -410,14 +418,29 @@ export function PlanningScreen({
   const [targetId, setTargetId] = useState(opponents[0]?.id ?? "");
   const [orders, setOrders] = useState(snapshot.player.orders);
   const [boardMode, setBoardMode] = useState<"target" | "self">("target");
+  const [isSealing, setIsSealing] = useState(false);
   const firepower = calculateFirepower(snapshot.player.secret);
   const fair = validateDistribution(orders.map((order) => order.targetId), opponents.map((seat) => seat.id));
   const remainingSeconds = useCountdown(snapshot.public.deadlineAt);
+  const selfSeat = snapshot.public.seats.find((seat) => seat.id === session.playerId);
+  const isSealed = selfSeat?.sealed ?? false;
+  const hasFullOrders = orders.length === firepower;
+  const canSeal = !isSealed && !isSealing && hasFullOrders && fair;
+  const sealLabel = isSealing
+    ? "กำลังส่งคำสั่ง..."
+    : isSealed
+      ? "ส่งคำสั่งแล้ว"
+      : !hasFullOrders
+        ? `เลือกเป้าให้ครบ ${orders.length}/${firepower}`
+        : !fair
+          ? "กระจายเป้าก่อนโจมตี"
+          : "พร้อมโจมตี";
 
   useEffect(() => {
     setOrders(snapshot.player.orders);
     setTargetId(opponents[0]?.id ?? "");
     setBoardMode("target");
+    setIsSealing(false);
   }, [snapshot.public.round]);
   useEffect(() => setOrders(snapshot.player.orders), [snapshot.player.orders]);
   useEffect(() => {
@@ -439,7 +462,7 @@ export function PlanningScreen({
   };
 
   const toggleOrder = (coordinate: Coordinate) => {
-    if (!targetId || boardMode === "self") return;
+    if (!targetId || boardMode === "self" || isSealed || isSealing) return;
     const selectedIndex = orders.findIndex(
       (order) => order.targetId === targetId && order.coordinate === coordinate,
     );
@@ -458,6 +481,26 @@ export function PlanningScreen({
       },
     ];
     void syncOrders(next);
+  };
+
+  const sealOrders = async () => {
+    if (!canSeal) return;
+    setIsSealing(true);
+    const result = await emitAck<AckResult>("orders:seal", {
+      roomCode: session.roomCode,
+      playerId: session.playerId,
+    });
+    setIsSealing(false);
+    if (!result.ok) return setError(labelError(result.error));
+    setSnapshot({
+      ...snapshot,
+      public: {
+        ...snapshot.public,
+        seats: snapshot.public.seats.map((seat) =>
+          seat.id === session.playerId ? { ...seat, sealed: true } : seat,
+        ),
+      },
+    });
   };
 
   return (
@@ -549,14 +592,10 @@ export function PlanningScreen({
         </div>
         <button
           className="button danger seal-button"
-          onClick={() =>
-            void emitAck<AckResult>("orders:seal", {
-              roomCode: session.roomCode,
-              playerId: session.playerId,
-            }).then((result) => !result.ok && setError(labelError(result.error)))
-          }
+          disabled={!canSeal}
+          onClick={() => void sealOrders()}
         >
-          พร้อมโจมตี
+          {sealLabel}
         </button>
       </aside>
     </section>
