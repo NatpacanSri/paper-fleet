@@ -43,6 +43,7 @@ export interface PlayerSecretState {
 export interface RoomSettings {
   maxSeats: number;
   planningSeconds: number;
+  maxRounds: number;
 }
 
 export interface Seat {
@@ -77,6 +78,9 @@ export interface PublicGameState {
   seats: Seat[];
   deadlineAt: number | null;
   winnerId: string | null;
+  settings: RoomSettings;
+  scores: PlayerScore[];
+  finishReason: FinishReason;
 }
 
 export interface ShotResolution {
@@ -99,6 +103,22 @@ export interface RevealEntry extends ShotResolution {
   targetId: string;
 }
 
+export interface RevealHistoryEntry extends RevealEntry {
+  round: number;
+}
+
+export type FinishReason = "ELIMINATION" | "ROUND_LIMIT" | null;
+
+export interface PlayerScore {
+  playerId: string;
+  survived: boolean;
+  remainingShipCells: number;
+  remainingForts: number;
+  hits: number;
+  misses: number;
+  score: number;
+}
+
 export interface GameRoom {
   code: string;
   phase: GamePhase;
@@ -109,4 +129,7 @@ export interface GameRoom {
   winnerId: string | null;
   reveal: RevealEntry[];
   previousReveal: RevealEntry[];
+  history: RevealHistoryEntry[];
+  scores: PlayerScore[];
+  finishReason: FinishReason;
 }

@@ -53,6 +53,9 @@ function makeSetupSnapshot(): GameSnapshot {
       round: 1,
       deadlineAt: null,
       winnerId: null,
+      settings: { maxSeats: 6, planningSeconds: 90, maxRounds: 20 },
+      scores: [],
+      finishReason: null,
       seats: [
         { id: "p1", name: "เรา", kind: "HUMAN", connected: true, ready: false, eliminated: false },
         { id: "p2", name: "เพื่อน", kind: "HUMAN", connected: true, ready: false, eliminated: false },
@@ -66,5 +69,6 @@ function makeSetupSnapshot(): GameSnapshot {
     },
     reveal: [],
     previousReveal: [],
+    history: [],
   };
 }

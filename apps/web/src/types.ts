@@ -2,6 +2,7 @@ import type {
   PlayerView,
   PublicGameState,
   RevealEntry,
+  RevealHistoryEntry,
 } from "@paper-fleet/game-core";
 
 export interface Session {
@@ -16,6 +17,7 @@ export interface GameSnapshot {
   player: PlayerView;
   reveal: RevealEntry[];
   previousReveal: RevealEntry[];
+  history: RevealHistoryEntry[];
 }
 
 export interface AckResult {

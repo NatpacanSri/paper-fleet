@@ -254,6 +254,9 @@ function makeSnapshot(round: number, orders: GameSnapshot["player"]["orders"]): 
       round,
       deadlineAt: Date.now() + 90_000,
       winnerId: null,
+      settings: { maxSeats: 6, planningSeconds: 90, maxRounds: 20 },
+      scores: [],
+      finishReason: null,
       seats: [
         { id: "p1", name: "เรา", kind: "HUMAN", connected: true, ready: false, eliminated: false },
         { id: "p2", name: "คู่แข่ง", kind: "HUMAN", connected: true, ready: false, eliminated: false },
@@ -272,5 +275,6 @@ function makeSnapshot(round: number, orders: GameSnapshot["player"]["orders"]): 
     },
     reveal: [],
     previousReveal: [],
+    history: [],
   };
 }

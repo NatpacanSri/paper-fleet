@@ -24,6 +24,18 @@ function oneShipState(coordinate: Coordinate): PlayerSecretState {
   };
 }
 
+function twoCellShipState(coordinates: [Coordinate, Coordinate]): PlayerSecretState {
+  return {
+    terrain: [
+      "A1", "A2", "A3", "A4", "B1", "B2",
+      "E5", "E6", "E7", "F5", "F6", "F7",
+    ],
+    forts: [{ id: "fort-1", coordinate: "B1", destroyed: false }],
+    ships: [{ id: `ship-${coordinates.join("-")}`, coordinates, hits: [] }],
+    reserveAmmo: 0,
+  };
+}
+
 const human = (id: string, name: string): Seat => ({
   id,
   name,
@@ -34,6 +46,65 @@ const human = (id: string, name: string): Seat => ({
 });
 
 describe("round resolution", () => {
+  it("defaults rooms to a 20 round limit", () => {
+    const room = createGameRoom("LIMIT1", human("p1", "หนึ่ง"));
+
+    expect(room.settings.maxRounds).toBe(20);
+  });
+
+  it("ends at the configured round limit, scores players, and keeps reveal history", () => {
+    const room = createGameRoom("LIMIT2", human("p1", "หนึ่ง"));
+    const playerOne = room.players.p1!;
+    room.phase = "REVEAL";
+    room.settings.maxRounds = 1;
+    playerOne.secret = twoCellShipState(["C3", "C4"]);
+    room.players.p2 = {
+      seat: human("p2", "สอง"),
+      secret: twoCellShipState(["D4", "D5"]),
+      intel: [],
+      orders: [],
+      sealed: true,
+    };
+    playerOne.orders = [
+      { id: "hit", attackerId: "p1", targetId: "p2", coordinate: "D4" },
+    ];
+    room.players.p2.orders = [
+      { id: "miss", attackerId: "p2", targetId: "p1", coordinate: "A8" },
+    ];
+    playerOne.sealed = true;
+
+    const reveal = resolveRound(room);
+    const snapshot = buildPlayerSnapshot(room, "p1");
+
+    expect(room.phase).toBe("FINISHED");
+    expect((room as any).finishReason).toBe("ROUND_LIMIT");
+    expect(room.winnerId).toBe("p1");
+    expect((room as any).scores).toEqual([
+      expect.objectContaining({
+        playerId: "p1",
+        remainingShipCells: 2,
+        remainingForts: 1,
+        hits: 1,
+        misses: 0,
+      }),
+      expect.objectContaining({
+        playerId: "p2",
+        remainingShipCells: 1,
+        remainingForts: 1,
+        hits: 0,
+        misses: 1,
+      }),
+    ]);
+    expect((room as any).history).toEqual([
+      expect.objectContaining({ round: 1, orderId: "hit", result: "HIT" }),
+      expect.objectContaining({ round: 1, orderId: "miss", result: "WATER" }),
+    ]);
+    expect((snapshot.public as any).finishReason).toBe("ROUND_LIMIT");
+    expect((snapshot.public as any).settings.maxRounds).toBe(1);
+    expect((snapshot.public as any).scores[0].playerId).toBe("p1");
+    expect((snapshot as any).history).toHaveLength(reveal.length);
+  });
+
   it("resolves every sealed order even when an attacker is eliminated earlier in the reveal", () => {
     const room = createGameRoom("PAPER1", human("p1", "หนึ่ง"));
     const playerOne = room.players.p1!;

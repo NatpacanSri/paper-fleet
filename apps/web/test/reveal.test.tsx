@@ -93,6 +93,9 @@ function makeSnapshot(): GameSnapshot {
       round: 2,
       deadlineAt: null,
       winnerId: null,
+      settings: { maxSeats: 6, planningSeconds: 90, maxRounds: 20 },
+      scores: [],
+      finishReason: null,
       seats: [
         { id: "p1", name: "เรา", kind: "HUMAN", connected: true, ready: false, eliminated: false },
         { id: "p2", name: "คู่แข่ง", kind: "HUMAN", connected: true, ready: false, eliminated: false },
@@ -107,5 +110,6 @@ function makeSnapshot(): GameSnapshot {
     },
     reveal: [],
     previousReveal: [],
+    history: [],
   };
 }

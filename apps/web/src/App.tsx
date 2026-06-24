@@ -281,7 +281,7 @@ function GameApp(props: {
   );
 }
 
-function LobbyScreen({
+export function LobbyScreen({
   session,
   snapshot,
   setError,
@@ -291,12 +291,29 @@ function LobbyScreen({
   setError: (error: string) => void;
 }) {
   const shareUrl = `${window.location.origin}?room=${session.roomCode}`;
+  const [maxRounds, setMaxRounds] = useState(String(snapshot.public.settings.maxRounds));
+  useEffect(() => {
+    setMaxRounds(String(snapshot.public.settings.maxRounds));
+  }, [snapshot.public.settings.maxRounds]);
   const addBot = (difficulty: BotDifficulty) =>
     void emitAck<AckResult>("room:update-seat", {
       roomCode: session.roomCode,
       requesterId: session.playerId,
       difficulty,
     }).then((result) => !result.ok && setError(labelError(result.error)));
+  const updateMaxRounds = (value: string) => {
+    setMaxRounds(value);
+    const next = Number(value);
+    if (!Number.isFinite(next) || next < 1) return;
+    void emitAck<AckResult & { settings?: GameSnapshot["public"]["settings"] }>(
+      "room:update-settings",
+      {
+        roomCode: session.roomCode,
+        requesterId: session.playerId,
+        settings: { maxRounds: next },
+      },
+    ).then((result) => !result.ok && setError(labelError(result.error)));
+  };
 
   return (
     <section className="lobby-layout">
@@ -315,6 +332,20 @@ function LobbyScreen({
               <button key={level} onClick={() => addBot(level)}>{level}</button>
             ))}
           </div>
+        )}
+        {session.isHost && (
+          <label className="round-limit-control">
+            จำนวนรอบสูงสุด
+            <input
+              aria-label="จำนวนรอบสูงสุด"
+              type="number"
+              min={1}
+              max={50}
+              value={maxRounds}
+              onChange={(event) => updateMaxRounds(event.target.value)}
+            />
+            <small>ครบจำนวนนี้แล้วจะตัดสินด้วยคะแนน</small>
+          </label>
         )}
       </div>
       <div className="seat-list">
@@ -739,19 +770,85 @@ export function SpectatorScreen({ snapshot }: { snapshot: GameSnapshot }) {
   );
 }
 
-function ResultsScreen({ snapshot, onLeave }: { snapshot: GameSnapshot; onLeave: () => void }) {
+export function ResultsScreen({
+  session,
+  snapshot,
+  setError,
+  onLeave,
+}: {
+  session: Session;
+  snapshot: GameSnapshot;
+  setError: (error: string) => void;
+  onLeave: () => void;
+}) {
+  const [isRestarting, setIsRestarting] = useState(false);
   const winner = snapshot.public.seats.find((seat) => seat.id === snapshot.public.winnerId);
+  const finishCopy = snapshot.public.finishReason === "ROUND_LIMIT"
+    ? `ครบ ${snapshot.public.settings.maxRounds} รอบ ตัดสินด้วยคะแนน`
+    : winner
+      ? "ชนะจากผู้รอดคนสุดท้าย"
+      : "จบเกมโดยไม่มีผู้ชนะ";
+  const restart = async () => {
+    if (!session.isHost || isRestarting) return;
+    setIsRestarting(true);
+    const result = await emitAck<AckResult>("room:restart", {
+      roomCode: session.roomCode,
+      requesterId: session.playerId,
+    });
+    setIsRestarting(false);
+    if (!result.ok) setError(labelError(result.error));
+  };
   return (
     <section className="results-sheet">
       <p className="eyebrow">รายงานหลังการรบ</p>
       <h1>{winner?.name ?? "ไม่มีผู้รอด"} ชนะ</h1>
-      <p>สมุดทุกเล่มปิดแล้ว การยิงทั้งหมด {snapshot.reveal.length} นัดในรอบสุดท้าย</p>
-      <div className="result-seats">
-        {snapshot.public.seats.map((seat, index) => (
-          <div key={seat.id}><span>{index + 1}</span><strong>{seat.name}</strong><small>{seat.id === winner?.id ? "ผู้รอดคนสุดท้าย" : "กองเรือจม"}</small></div>
-        ))}
+      <p>{finishCopy}</p>
+      <section className="score-board" aria-labelledby="score-board-heading">
+        <h2 id="score-board-heading">ตารางคะแนน</h2>
+        <div className="score-rows">
+          {snapshot.public.scores.map((score, index) => {
+            const seat = snapshot.public.seats.find((candidate) => candidate.id === score.playerId);
+            return (
+              <article
+                key={score.playerId}
+                className={`score-row ${playerColorClass(snapshot, score.playerId)}`}
+              >
+                <span>{index + 1}</span>
+                <strong>{seat?.name ?? "ไม่ทราบชื่อ"}</strong>
+                <b>{score.score}</b>
+                <small>
+                  เรือเหลือ {score.remainingShipCells} · ป้อม {score.remainingForts}
+                  {" · "}โดน {score.hits} · พลาด {score.misses}
+                </small>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+      <details className="battle-history" open>
+        <summary>ประวัติการยิง</summary>
+        <div>
+          {snapshot.history.map((shot) => (
+            <span key={`${shot.round}-${shot.orderId}`}>
+              รอบ {shot.round} · {nameOf(snapshot, shot.attackerId)} → {nameOf(snapshot, shot.targetId)}
+              {" · "}{shot.coordinate} · {resultLabel(shot.result)}
+            </span>
+          ))}
+          {snapshot.history.length === 0 && <span>ยังไม่มีบันทึกการยิง</span>}
+        </div>
+      </details>
+      <div className="result-actions">
+        {session.isHost && (
+          <button
+            className="button primary"
+            disabled={isRestarting}
+            onClick={() => void restart()}
+          >
+            {isRestarting ? "กำลังเปิดห้องใหม่..." : "เริ่มใหม่ในห้องเดิม"}
+          </button>
+        )}
+        <button className="button secondary" onClick={onLeave}>กลับหน้าแรก</button>
       </div>
-      <button className="button primary" onClick={onLeave}>กลับหน้าแรก</button>
     </section>
   );
 }
@@ -867,7 +964,7 @@ function resultLabel(result: RevealEntry["result"]) {
 function shotStats(shots: RevealEntry[]) {
   return shots.reduce(
     (stats, shot) => {
-      if (shot.result === "HIT" || shot.result === "SUNK" || shot.result === "WRECK") {
+      if (shot.result === "HIT" || shot.result === "SUNK") {
         stats.hits += 1;
       } else {
         stats.misses += 1;

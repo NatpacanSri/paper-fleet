@@ -158,10 +158,43 @@ export function createSocketServer(
     );
 
     socket.on(
+      "room:update-settings",
+      (
+        payload: {
+          roomCode?: string;
+          requesterId?: string;
+          settings?: { maxRounds?: number };
+        },
+        ack: Ack,
+      ) => {
+        safeAck(ack, () => {
+          const settings = manager.updateSettings(
+            payload.roomCode ?? "",
+            payload.requesterId ?? "",
+            payload.settings ?? {},
+          );
+          void sendSnapshots(payload.roomCode ?? "");
+          return { ok: true, settings };
+        });
+      },
+    );
+
+    socket.on(
       "room:start",
       (payload: { roomCode?: string; requesterId?: string }, ack: Ack) => {
         safeAck(ack, () => {
           manager.startRoom(payload.roomCode ?? "", payload.requesterId ?? "");
+          void sendSnapshots(payload.roomCode ?? "");
+          return { ok: true };
+        });
+      },
+    );
+
+    socket.on(
+      "room:restart",
+      (payload: { roomCode?: string; requesterId?: string }, ack: Ack) => {
+        safeAck(ack, () => {
+          manager.restartRoom(payload.roomCode ?? "", payload.requesterId ?? "");
           void sendSnapshots(payload.roomCode ?? "");
           return { ok: true };
         });

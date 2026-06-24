@@ -162,6 +162,9 @@ describe("SpectatorScreen", () => {
             round: 3,
             deadlineAt: null,
             winnerId: null,
+            settings: { maxSeats: 6, planningSeconds: 90, maxRounds: 20 },
+            scores: [],
+            finishReason: null,
             seats: [
               { id: "p1", name: "คนดู", kind: "HUMAN", connected: true, ready: false, eliminated: true },
               { id: "p2", name: "ผู้รอด", kind: "HUMAN", connected: true, ready: false, eliminated: false },
@@ -175,6 +178,7 @@ describe("SpectatorScreen", () => {
           },
           reveal: [],
           previousReveal: [],
+          history: [],
         }}
       />,
     );

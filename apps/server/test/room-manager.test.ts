@@ -2,6 +2,59 @@ import { describe, expect, it } from "vitest";
 import { RoomManager } from "../src/room-manager";
 
 describe("RoomManager", () => {
+  it("lets only the host configure max rounds before the room starts", () => {
+    const manager = new RoomManager({ randomId: sequenceId() });
+    const host = manager.createRoom("กัปตัน");
+    const guest = manager.joinRoom(host.roomCode, "ลูกเรือ");
+
+    const settings = (manager as any).updateSettings(host.roomCode, host.playerId, {
+      maxRounds: 12,
+    });
+
+    expect(settings.maxRounds).toBe(12);
+    expect(manager.getRoom(host.roomCode).settings.maxRounds).toBe(12);
+    expect(() =>
+      (manager as any).updateSettings(host.roomCode, guest.playerId, { maxRounds: 9 }),
+    ).toThrow("host_only");
+
+    manager.startRoom(host.roomCode, host.playerId);
+
+    expect(() =>
+      (manager as any).updateSettings(host.roomCode, host.playerId, { maxRounds: 9 }),
+    ).toThrow("game_started");
+  });
+
+  it("restarts a finished room with the same seats and settings", () => {
+    const manager = new RoomManager({ randomId: sequenceId() });
+    const host = manager.createRoom("กัปตัน");
+    const guest = manager.joinRoom(host.roomCode, "ลูกเรือ");
+    (manager as any).updateSettings(host.roomCode, host.playerId, { maxRounds: 1 });
+    manager.startRoom(host.roomCode, host.playerId);
+    for (const id of [host.playerId, guest.playerId]) {
+      manager.randomizeSetup(host.roomCode, id);
+      manager.readySetup(host.roomCode, id);
+    }
+    manager.updateOrders(host.roomCode, host.playerId, [
+      { targetId: guest.playerId, coordinate: "A8" },
+    ]);
+    manager.updateOrders(host.roomCode, guest.playerId, [
+      { targetId: host.playerId, coordinate: "A8" },
+    ]);
+    manager.sealOrders(host.roomCode, host.playerId);
+    manager.sealOrders(host.roomCode, guest.playerId);
+
+    expect(manager.getRoom(host.roomCode).phase).toBe("FINISHED");
+
+    const restarted = (manager as any).restartRoom(host.roomCode, host.playerId);
+
+    expect(restarted.phase).toBe("LOBBY");
+    expect(restarted.settings.maxRounds).toBe(1);
+    expect(Object.keys(restarted.players)).toEqual([host.playerId, guest.playerId]);
+    expect(restarted.history).toEqual([]);
+    expect(restarted.players[host.playerId].secret.ships).toEqual([]);
+    expect(restarted.players[host.playerId].seat.ready).toBe(false);
+  });
+
   it("creates private rooms, joins by code, and caps seats at six", () => {
     const manager = new RoomManager({ randomId: sequenceId() });
     const host = manager.createRoom("กัปตัน");

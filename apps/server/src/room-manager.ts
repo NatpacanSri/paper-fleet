@@ -1,5 +1,6 @@
 import {
   buildPlayerSnapshot,
+  calculateScores,
   calculateFirepower,
   chooseBotOrders,
   createGameRoom,
@@ -13,6 +14,7 @@ import type {
   Coordinate,
   FireOrder,
   GameRoom,
+  RoomSettings,
   Seat,
 } from "@paper-fleet/game-core";
 
@@ -41,6 +43,10 @@ interface ManagedRoom {
 interface OrderInput {
   targetId: string;
   coordinate: Coordinate;
+}
+
+interface SettingsInput {
+  maxRounds?: number;
 }
 
 interface TickResult {
@@ -125,6 +131,18 @@ export class RoomManager {
       sealed: false,
     };
     return id;
+  }
+
+  updateSettings(roomCode: string, requesterId: string, settings: SettingsInput) {
+    const managed = this.requireManaged(roomCode);
+    if (managed.hostId !== requesterId) throw new Error("host_only");
+    if (managed.game.phase !== "LOBBY") throw new Error("game_started");
+
+    managed.game.settings = {
+      ...managed.game.settings,
+      maxRounds: this.clampMaxRounds(settings.maxRounds ?? managed.game.settings.maxRounds),
+    };
+    return managed.game.settings;
   }
 
   startRoom(roomCode: string, requesterId: string) {
@@ -223,6 +241,35 @@ export class RoomManager {
     this.beginPlanning(managed);
   }
 
+  restartRoom(roomCode: string, requesterId: string) {
+    const managed = this.requireManaged(roomCode);
+    if (managed.hostId !== requesterId) throw new Error("host_only");
+    if (managed.game.phase !== "FINISHED") throw new Error("wrong_phase");
+
+    managed.game.phase = "LOBBY";
+    managed.game.round = 1;
+    managed.game.deadlineAt = null;
+    managed.game.winnerId = null;
+    managed.game.reveal = [];
+    managed.game.previousReveal = [];
+    managed.game.history = [];
+    managed.game.scores = [];
+    managed.game.finishReason = null;
+    managed.firepower.clear();
+    managed.emptySince = null;
+
+    for (const player of Object.values(managed.game.players)) {
+      player.secret = { terrain: [], forts: [], ships: [], reserveAmmo: 0 };
+      player.intel = [];
+      player.orders = [];
+      player.sealed = false;
+      player.seat.ready = player.seat.kind === "BOT";
+      player.seat.eliminated = false;
+    }
+
+    return managed.game;
+  }
+
   leaveRoom(roomCode: string, playerId: string) {
     const managed = this.requireManaged(roomCode);
     if (!managed.game.players[playerId]) throw new Error("player_not_found");
@@ -254,6 +301,8 @@ export class RoomManager {
       managed.game.winnerId = activePlayers[0]!.seat.id;
       managed.game.phase = "FINISHED";
       managed.game.deadlineAt = null;
+      managed.game.finishReason = "ELIMINATION";
+      managed.game.scores = calculateScores(managed.game);
     } else if (managed.game.phase === "PLANNING") {
       this.resolveIfReady(managed);
     }
@@ -436,6 +485,11 @@ export class RoomManager {
     let suffix = 2;
     while (occupied.has(`ฉลามขาว ${suffix}`)) suffix += 1;
     return `ฉลามขาว ${suffix}`;
+  }
+
+  private clampMaxRounds(maxRounds: RoomSettings["maxRounds"]) {
+    if (!Number.isFinite(maxRounds)) return 20;
+    return Math.min(50, Math.max(1, Math.floor(maxRounds)));
   }
 
   private uniqueRoomCode() {

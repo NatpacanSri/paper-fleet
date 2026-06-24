@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { io as createClient, type Socket } from "socket.io-client";
+import type { PublicGameState } from "@paper-fleet/game-core";
 import {
   buildRevealSchedule,
   createSocketServer,
@@ -60,6 +61,57 @@ describe("Socket.IO API", () => {
     expect(created.ok).toBe(true);
     expect(created.roomCode).toHaveLength(6);
     expect(JSON.stringify(created.snapshot)).toContain("กัปตัน");
+  });
+
+  it("updates lobby settings and restarts finished rooms through socket acknowledgements", async () => {
+    const server = createSocketServer();
+    servers.push(server);
+    server.httpServer.listen(0);
+    await once(server.httpServer, "listening");
+    const port = (server.httpServer.address() as AddressInfo).port;
+    const hostClient = createClient(`http://127.0.0.1:${port}`);
+    const guestClient = createClient(`http://127.0.0.1:${port}`);
+    clients.push(hostClient, guestClient);
+    await Promise.all([waitForConnect(hostClient), waitForConnect(guestClient)]);
+
+    const host = await emitAck<{
+      ok: true;
+      roomCode: string;
+      playerId: string;
+      token: string;
+    }>(hostClient, "room:create", { name: "กัปตัน" });
+    const guest = await emitAck<{ ok: true; playerId: string }>(
+      guestClient,
+      "room:join",
+      { roomCode: host.roomCode, name: "ลูกเรือ" },
+    );
+
+    const updated = await emitAckWithTimeout<{ ok: true; settings: { maxRounds: number } }>(
+      hostClient,
+      "room:update-settings",
+      { roomCode: host.roomCode, requesterId: host.playerId, settings: { maxRounds: 14 } },
+    );
+    expect(updated.settings.maxRounds).toBe(14);
+
+    server.manager.getRoom(host.roomCode).phase = "FINISHED";
+    server.manager.getRoom(host.roomCode).winnerId = guest.playerId;
+
+    const restarted = await emitAckWithTimeout<{ ok: true }>(
+      hostClient,
+      "room:restart",
+      { roomCode: host.roomCode, requesterId: host.playerId },
+    );
+    expect(restarted.ok).toBe(true);
+
+    const state = await waitForState(
+      guestClient,
+      (snapshot) => snapshot.public.phase === "LOBBY",
+    );
+    expect(state.public.settings.maxRounds).toBe(14);
+    expect(state.public.seats.map((seat) => seat.id)).toEqual([
+      host.playerId,
+      guest.playerId,
+    ]);
   });
 
   it("removes a leaving player from the room for remaining clients", async () => {
@@ -189,11 +241,20 @@ function emitAck<T>(socket: Socket, event: string, payload: unknown) {
   return new Promise<T>((resolve) => socket.emit(event, payload, resolve));
 }
 
+function emitAckWithTimeout<T>(socket: Socket, event: string, payload: unknown) {
+  return Promise.race([
+    emitAck<T>(socket, event, payload),
+    new Promise<never>((_resolve, reject) =>
+      setTimeout(() => reject(new Error(`Timed out waiting for ${event}`)), 200),
+    ),
+  ]);
+}
+
 function waitForConnect(socket: Socket) {
   return new Promise<void>((resolve) => socket.once("connect", () => resolve()));
 }
 
-function waitForState<T extends { public: { seats: unknown[] } }>(
+function waitForState<T extends { public: PublicGameState } = { public: PublicGameState }>(
   socket: Socket,
   predicate: (snapshot: T) => boolean,
 ) {
