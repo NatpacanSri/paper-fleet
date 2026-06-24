@@ -1,0 +1,18 @@
+{
+  "name": "paper-fleet",
+  "private": true,
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "dev": "concurrently -n server,web -c yellow,cyan \"pnpm --filter @paper-fleet/server dev\" \"pnpm --filter @paper-fleet/web dev\"",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "build": "pnpm -r build",
+    "start": "pnpm --filter @paper-fleet/server start"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}
