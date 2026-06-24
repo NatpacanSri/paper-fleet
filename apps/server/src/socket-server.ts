@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express from "express";
 import { Server } from "socket.io";
@@ -37,13 +38,18 @@ export function buildRevealSchedule(
   });
 }
 
+export function defaultWebDistDir(moduleUrl = import.meta.url) {
+  return process.env.WEB_DIST_DIR
+    ?? join(dirname(fileURLToPath(moduleUrl)), "../../web/dist");
+}
+
 export function createSocketServer(
   manager = new RoomManager(),
   {
     revealStepMs = 800,
     attackerGapMs = 1_200,
     salvageDelayMs = 3_500,
-    webDistDir = process.env.WEB_DIST_DIR ?? join(process.cwd(), "apps/web/dist"),
+    webDistDir = defaultWebDistDir(),
   }: SocketServerOptions = {},
 ) {
   const app = express();

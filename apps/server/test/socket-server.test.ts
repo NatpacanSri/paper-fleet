@@ -2,10 +2,15 @@ import { once } from "node:events";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { io as createClient, type Socket } from "socket.io-client";
-import { buildRevealSchedule, createSocketServer } from "../src/socket-server";
+import {
+  buildRevealSchedule,
+  createSocketServer,
+  defaultWebDistDir,
+} from "../src/socket-server";
 import { RoomManager } from "../src/room-manager";
 
 const clients: Socket[] = [];
@@ -98,6 +103,12 @@ describe("Socket.IO API", () => {
     const healthResponse = await fetch(`http://127.0.0.1:${port}/health`);
     expect(healthResponse.headers.get("content-type")).toContain("application/json");
     expect(await healthResponse.json()).toEqual({ ok: true, service: "paper-fleet-server" });
+  });
+
+  it("resolves the web dist path from the server module instead of the current working directory", () => {
+    const serverDistModule = pathToFileURL(join(process.cwd(), "dist/socket-server.js")).href;
+
+    expect(defaultWebDistDir(serverDistModule)).toBe(join(process.cwd(), "../web/dist"));
   });
 
   it("advances from salvage to the next planning round after the reveal delay", async () => {
