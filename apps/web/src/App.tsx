@@ -338,7 +338,7 @@ function LobbyScreen({
   );
 }
 
-function SetupScreen({
+export function SetupScreen({
   session,
   snapshot,
   setSnapshot,
@@ -351,8 +351,6 @@ function SetupScreen({
 }) {
   const [draft, setDraft] = useState(snapshot.player.secret);
   const validation = validatePlacement(draft);
-
-  useEffect(() => setDraft(snapshot.player.secret), [snapshot.player.secret]);
 
   const randomize = () =>
     void emitAck<AckResult & { secret?: PlayerSecretState }>("setup:randomize", {
